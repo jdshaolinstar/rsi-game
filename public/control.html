@@ -53,6 +53,7 @@
 </header>
 <div class="grid">
   <div>
+    <section style="display:flex;gap:12px;align-items:center"><div id="qr" style="background:#fff;padding:8px;border-radius:8px"></div><div><h2>Scan to play</h2><div style="font-size:18px;font-weight:700" id="url2"></div><div class="muted">Break it. Tell it what to change. Watch it ship.</div></div></section>
     <section><h2>The game (live, as players see it)</h2><iframe id="game" src="/"></iframe></section>
   </div>
   <div>
@@ -90,10 +91,12 @@
     <section><h2>Bug hunters</h2><table id="hunters"></table></section>
   </div>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 var $ = function (id) { return document.getElementById(id); };
 var ADMIN = new URLSearchParams(location.search).get('admin') || '';
-$('url').textContent = location.host;
+$('url').textContent = location.host; $('url2').textContent = location.host;
+try { new QRCode($('qr'), { text: location.origin + '/', width: 120, height: 120 }); } catch (e) { $('qr').style.display = 'none'; }
 function post(path, b) { b = b || {}; b.admin = ADMIN; return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then(function (r) { return r.json(); }); }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
 function addEv(e) {
