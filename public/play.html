@@ -31,7 +31,7 @@
 </style>
 </head>
 <body>
-<header><b>PATCHWORK DUNGEON</b><select id="vpick" title="Pick a version to play"><option value="">Latest</option></select></header>
+<header><b id="gname">PATCHWORK DUNGEON</b><select id="vpick" title="Pick a version to play"><option value="">Latest</option></select></header>
 <div id="news"></div>
 <div id="whatsnew"></div>
 <div id="wrap">
@@ -87,7 +87,7 @@
 
   function load(cb) {
     fetch('/api/assign?pid=' + encodeURIComponent(pid) + (picked ? '&v=' + picked : '')).then(function (r) { return r.json(); }).then(function (a) {
-      THEME = a.theme; showNew(a);
+      THEME = a.theme; showNew(a); $('gname').textContent = String(a.game || 'Patchwork Dungeon').toUpperCase(); document.title = a.game || 'Patchwork Dungeon';
       if (a.v === V && G) return cb();
       var s = document.createElement('script');
       s.src = '/v/' + a.v + '/game.js?' + Date.now();

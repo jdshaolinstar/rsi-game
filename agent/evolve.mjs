@@ -201,7 +201,7 @@ export function applyEdits(code, edits) {
   return code;
 }
 
-async function fixer({ goals, code, signals, rules, requests = [], recent = [], timeoutMs }) {
+async function fixer({ goals, code, signals, rules, requests = [], recent = [], timeoutMs, maxTokens }) {
   const sys = `You maintain a small browser dungeon game (game.js, pure JavaScript, ES5 style, runs in browsers and in a sandbox with only Math available). You improve it by proposing small, exact text edits.
 Confirmed skills from your skill manifest. Follow them:
 ${rules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
@@ -222,7 +222,7 @@ ${code}
   const B = BUDGETS[S.budget] || BUDGETS.fast;
   return chat(MODELS.coder, [{ role: 'system', content: sys }, { role: 'user', content: user + `
 
-Budget: keep "diagnosis" under ${S.budget === 'fast' ? 40 : 120} words and edits minimal.` }], { temperature: 0.3, maxTokens: B.maxTokens, timeoutMs: timeoutMs || B.timeoutMs });
+Budget: keep "diagnosis" under ${S.budget === 'fast' ? 40 : 120} words and edits minimal.` }], { temperature: 0.3, maxTokens: maxTokens || B.maxTokens, timeoutMs: timeoutMs || B.timeoutMs });
 }
 
 // ---------- goals ----------
@@ -346,7 +346,7 @@ export function tick() { checkSchedule('timer'); }
 async function fixTask(t, rules) {
   const code = taskSource(t);
   try {
-    const prop = await fixer({ goals: [{ text: 'Fix the reported problem so the game plays as designed.' }], code, signals: {}, rules, requests: [{ id: 'r1', kind: 'feedback', text: t.symptom, v: 'bench' }], timeoutMs: 150000 });
+    const prop = await fixer({ goals: [{ text: 'Fix the reported problem so the game plays as designed.' }], code, signals: {}, rules, requests: [{ id: 'r1', kind: 'feedback', text: t.symptom, v: 'bench' }], timeoutMs: 150000, maxTokens: 32000 });
     let fixed;
     try { fixed = applyEdits(code, prop.edits); } catch (e) { return { id: t.id, pass: false, reason: 'patch did not apply: ' + e.message, prop }; }
     const r = checkTask(t, fixed);
@@ -384,17 +384,23 @@ export async function learn() {
 
     emit('learn', `Held-out check: manifest v${cur.v} vs v${m.v} on ${TASKS.filter(t => t.split === 'heldout').length} bugs never used for learning...`);
     const [a, b] = await Promise.all([benchScore(rulesOf(cur), 'heldout'), benchScore(rulesOf(m), 'heldout')]);
-    cur.heldout = a.score; cur.of = a.of; m.heldout = b.score; m.of = b.of;
+    // compare only tasks where both sides got a real answer from the model
+    const err = r => /^model error/.test(r.reason || '');
+    const fair = a.res.map((r, i) => [r, b.res[i]]).filter(([x, y]) => !err(x) && !err(y));
+    const fa = fair.filter(([x]) => x.pass).length, fb = fair.filter(([, y]) => y.pass).length, excluded = a.res.length - fair.length;
+    cur.heldout = fa; cur.of = fair.length; m.heldout = fb; m.of = fair.length; m.excluded = excluded;
+    cur.detail = a.res.map(r => ({ id: r.id, pass: r.pass, reason: r.reason }));
     m.detail = b.res.map(r => ({ id: r.id, pass: r.pass, reason: r.reason }));
-    if (b.score > a.score) {
+    if (excluded) emit('learn', `${excluded} held-out task(s) excluded: the model returned no usable reply on one side.`);
+    if (fair.length >= 3 && fb > fa) {
       cur.status = 'superseded'; m.status = 'adopted'; sk.status = 'confirmed'; S.manifest = m.v;
-      emit('adopt', `skill_manifest_v${m.v} ADOPTED: held-out ${a.score}/${a.of} -> ${b.score}/${b.of}. ${sid} is now a confirmed skill.`);
+      emit('adopt', `skill_manifest_v${m.v} ADOPTED: held-out ${fa}/${fair.length} -> ${fb}/${fair.length}. ${sid} is now a confirmed skill.`);
     } else {
       m.status = 'discarded'; sk.status = 'discarded';
-      emit('discard', `skill_manifest_v${m.v} DISCARDED: held-out ${a.score}/${a.of} -> ${b.score}/${b.of}. Keeping v${cur.v}.`);
+      emit('discard', `skill_manifest_v${m.v} DISCARDED: held-out ${fa}/${fair.length} -> ${fb}/${fair.length}. Keeping v${cur.v}.`);
     }
     writeSkill(sk); writeManifest(cur); writeManifest(m);
-    return { v: m.v, before: a.score, after: b.score, of: b.of };
+    return { v: m.v, before: fa, after: fb, of: fair.length, excluded };
   } catch (e) { emit('error', 'Learning failed: ' + e.message); return { error: e.message }; }
   finally { S.busy = null; }
 }
@@ -517,7 +523,7 @@ export async function newGame(brief) {
     }
     const title = gameTitle(ca, 'New RSI game');
     const id = saveVersion(ca, theme, { kind: 'newgame', game: title, parent: null, basedOn: best.id, summary: `NEW GAME "${title}" from RSI: ${brief.slice(0, 120)}`, diagnosis: `Built with skill manifest v${man.v} and lessons from ${best.id}. Held-out bots: ${fmt(ma)}. Baseline without skills: ${fmt(mb)}.`, goals: S.goals.map(g => g.text), skillManifest: man.v, before: sb, after: sa, heldout: strip(ma), baseHeldout: strip(mb), status: 'testing', context: { brief, lessons, model: MODELS.coder, baselineVersion: baseId }, ab });
-    emit('newgame', `${id} "${title}" built WITH skills scored ${sa.toFixed(2)} vs ${sb.toFixed(2)} WITHOUT${baseId ? ` (${baseId})` : ''}. ${sa > sb ? 'The learnings helped on this run.' : sa === sb ? 'No difference on this run.' : 'The baseline did better on this run.'}`, { id });
+    emit('newgame', `${id} "${title}" built WITH skills scored ${sa.toFixed(2)} vs ${sb.toFixed(2)} WITHOUT${baseId ? ` (${baseId})` : ''}. ${/aborted|ERROR|model/i.test(mb.loadError || '') ? 'No fair comparison this time: the baseline got no usable reply from the model.' : sa > sb ? 'The learnings helped on this run (one run, not proof).' : sa === sb ? 'No difference on this run.' : 'The baseline did better on this run.'}`, { id });
     promote(id, `new game, held-out bots ${fmt(ma)}`);
     return { shipped: true, id, ab };
   } catch (e) { emit('error', 'New game failed: ' + e.message); return { error: e.message }; }

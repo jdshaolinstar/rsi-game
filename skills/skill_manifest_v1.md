@@ -1,6 +1,6 @@
 # skill_manifest_v1
 
-- created: 2026-11-07T23:03:01.004Z
+- created: 2026-11-07T23:09:21.284Z
 - project: Patchwork Dungeon (browser game, ES5 JavaScript)
 - parent: none
 - status: adopted

@@ -59,7 +59,7 @@ const server = http.createServer(async (req, res) => {
         const pid = u.searchParams.get('pid') || Math.random(); const want = u.searchParams.get('v');
         const v = want && A.S.versions[want] ? want : (A.S.canary && hash(pid) < A.S.canaryShare ? A.S.canary : A.S.stable);
         const meta = A.S.versions[v];
-        return send(res, 200, { v, theme: A.themeOf(v), summary: meta?.summary || '', status: meta?.status, addressed: meta?.addressedText || [], goals: meta?.goals || [], stable: A.S.stable });
+        return send(res, 200, { v, game: meta?.game || 'Patchwork Dungeon', theme: A.themeOf(v), summary: meta?.summary || '', status: meta?.status, addressed: meta?.addressedText || [], goals: meta?.goals || [], stable: A.S.stable });
       }
       if (p === '/api/versions') return send(res, 200, { stable: A.S.stable, canary: A.S.canary, versions: A.versionList() });
       let m = p.match(/^\/v\/(v\d+)\/(game\.js|theme\.json|meta\.json)$/);
