@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patchwork Control Room</title>
+<style>
+  :root { --bg: #0d0b14; --panel: #161222; --line: #2a2340; --fg: #f1ecff; --mute: #9b93b8; --accent: #ff9b3d; --ok: #3ddc97; --bad: #ff5470; --info: #7cc4ff; --vio: #b48cff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.45 system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; color: var(--accent); letter-spacing: .5px; }
+  .pill { padding: 3px 10px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 12px; }
+  .grid { display: grid; grid-template-columns: 380px 1fr 360px; gap: 12px; padding: 12px 16px; }
+  @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--mute); margin: 0 0 8px; }
+  iframe { width: 100%; height: 700px; border: 0; border-radius: 10px; background: #000; }
+  button { font: inherit; border: 0; border-radius: 8px; padding: 7px 11px; background: #2a2340; color: var(--fg); cursor: pointer; margin: 0 4px 6px 0; }
+  button.primary { background: var(--accent); color: #1a0e00; font-weight: 700; }
+  button.on { background: var(--ok); color: #002614; font-weight: 700; }
+  select { font: inherit; background: #2a2340; color: var(--fg); border: 0; border-radius: 8px; padding: 7px; }
+  #feed { height: calc(100vh - 150px); min-height: 500px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+  .ev { padding: 8px 10px; border-radius: 8px; background: #1d182c; border-left: 3px solid var(--line); }
+  .ev time { color: var(--mute); font: 11px monospace; margin-right: 6px; }
+  .ev .k { font: 700 10px monospace; text-transform: uppercase; margin-right: 6px; }
+  .k-promote, .k-adopt { border-color: var(--ok) !important; } .k-promote .k, .k-adopt .k { color: var(--ok); }
+  .k-rollback, .k-discard, .k-error { border-color: var(--bad) !important; } .k-rollback .k, .k-discard .k, .k-error .k { color: var(--bad); }
+  .k-canary { border-color: var(--accent) !important; } .k-canary .k { color: var(--accent); }
+  .k-learn, .k-look { border-color: var(--vio) !important; } .k-learn .k, .k-look .k { color: var(--vio); }
+  .k-signal, .k-deploy { border-color: var(--info) !important; } .k-signal .k, .k-deploy .k { color: var(--info); }
+  .ev pre { margin: 6px 0 0; white-space: pre-wrap; font: 11px/1.4 monospace; color: #cfc6ee; background: #120f1c; padding: 6px; border-radius: 6px; max-height: 160px; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  td, th { text-align: left; padding: 4px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .st { font: 700 10px monospace; text-transform: uppercase; }
+  .s-stable, .s-adopted { color: var(--ok); } .s-canary, .s-testing { color: var(--accent); } .s-rejected, .s-discarded { color: var(--bad); } .s-retired, .s-superseded { color: var(--mute); } .s-rolled { color: var(--bad); }
+  .looks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .looks img, .looks canvas { width: 100%; border-radius: 8px; aspect-ratio: 360/560; object-fit: cover; background: #000; }
+  .muted { color: var(--mute); }
+  .rule { padding: 4px 0; border-bottom: 1px dashed var(--line); }
+  .busy { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>PATCHWORK · the game that fixes itself</h1>
+  <span class="pill">Live: <b id="stable">v1</b></span>
+  <span class="pill">Canary: <b id="canary">none</b></span>
+  <span class="pill">Skillbook: <b id="skill">s1</b></span>
+  <span class="pill" id="busy">idle</span>
+  <span class="pill muted" id="usage"></span>
+  <span class="pill">Play at <b id="url"></b></span>
+</header>
+<div class="grid">
+  <div>
+    <section><h2>The game (live, as players see it)</h2><iframe id="game" src="/"></iframe></section>
+  </div>
+  <div>
+    <section>
+      <h2>Agent feed</h2>
+      <div id="feed"></div>
+    </section>
+  </div>
+  <div>
+    <section>
+      <h2>Goal</h2>
+      <select id="goal"></select>
+      <div style="margin-top:8px">
+        <button class="primary" id="gen">Improve once</button>
+        <button id="auto">Autopilot</button>
+        <button id="learn">Teach itself (loop 2)</button>
+      </div>
+      <div class="muted" style="font-size:11px">Each patch must win on held-out bot playtests, pass guardrails, then survive a canary on real players.</div>
+    </section>
+    <section>
+      <h2>Playbooks</h2>
+      <button data-pb="crash">💥 Bad deploy: crash</button>
+      <button data-pb="annoy">😤 Annoying: fast slimes</button>
+      <button data-pb="sabotage">🕳 Cheating patch</button>
+      <button data-pb="reset">↺ Reset to v1</button>
+    </section>
+    <section>
+      <h2>Look like this (Meta vision)</h2>
+      <div class="looks"><div><div class="muted">Target (made with muse-image-1.0)</div><img src="/target.webp" alt="target art"></div><div><div class="muted">Current look <span id="themeId"></span></div><canvas id="look" width="360" height="560"></canvas></div></div>
+      <button id="style" style="margin-top:8px">Run one look step</button>
+      <div id="themes" class="muted" style="font-size:11px"></div>
+    </section>
+    <section><h2>Skillbook versions (loop 2)</h2><div id="skills"></div></section>
+    <section><h2>Game versions (loop 1)</h2><table id="versions"></table></section>
+    <section><h2>Bug hunters</h2><table id="hunters"></table></section>
+  </div>
+</div>
+<script>
+var $ = function (id) { return document.getElementById(id); };
+var ADMIN = new URLSearchParams(location.search).get('admin') || '';
+$('url').textContent = location.host;
+function post(path, b) { b = b || {}; b.admin = ADMIN; return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then(function (r) { return r.json(); }); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
+function addEv(e) {
+  var d = document.createElement('div'); d.className = 'ev k-' + e.kind;
+  var extra = '';
+  if (e.edits) extra = '<pre>' + esc((e.diagnosis ? 'Diagnosis: ' + e.diagnosis + '\n\n' : '') + e.edits.map(function (x) { return '- ' + x.find + '\n+ ' + x.replace; }).join('\n\n')) + '</pre>';
+  d.innerHTML = '<time>' + new Date(e.at).toLocaleTimeString() + '</time><span class="k">' + e.kind + '</span>' + esc(e.msg) + extra;
+  var f = $('feed'); f.appendChild(d); f.scrollTop = f.scrollHeight;
+}
+var es = new EventSource('/api/events'); es.onmessage = function (m) { addEv(JSON.parse(m.data)); refresh(); };
+var first = true, curStable = null, curTheme = null;
+function refresh() {
+  fetch('/api/state').then(function (r) { return r.json(); }).then(function (s) {
+    if (first) { s.log.forEach(addEv); first = false; var g = $('goal'); Object.keys(s.goals).forEach(function (k) { var o = document.createElement('option'); o.value = k; o.textContent = s.goals[k]; g.appendChild(o); }); }
+    $('goal').value = s.goal;
+    $('stable').textContent = s.stable; $('canary').textContent = s.canary ? s.canary + ' (' + Math.round(s.canaryShare * 100) + '%)' : 'none';
+    $('skill').textContent = s.skill; $('busy').textContent = s.busy || 'idle'; $('busy').className = 'pill' + (s.busy ? ' busy' : '');
+    $('auto').className = s.autopilot ? 'on' : '';
+    var u = s.usage; $('usage').textContent = 'Meta calls ' + u.calls + ' · ' + Math.round((u.inTok + u.outTok) / 1000) + 'k tokens';
+    $('versions').innerHTML = '<tr><th>ver</th><th>status</th><th>change</th><th>goal (held-out)</th></tr>' + s.versions.slice().reverse().map(function (v) {
+      return '<tr><td>' + v.id + '</td><td class="st s-' + String(v.status).split(' ')[0] + '">' + v.status + '</td><td>' + esc(v.summary) + (v.reason ? '<div class="muted">' + esc(v.reason) + '</div>' : '') + '</td><td>' + (v.before != null ? v.before.toFixed(2) + ' → ' + v.after.toFixed(2) : '') + '</td></tr>';
+    }).join('');
+    $('skills').innerHTML = s.skillbooks.slice().reverse().map(function (b) {
+      return '<div style="margin-bottom:8px"><b>' + b.id + '</b> <span class="st s-' + b.status + '">' + b.status + '</span> ' + (b.heldout != null ? '<b>held-out ' + b.heldout + '/' + b.of + '</b>' : '') + '<div class="rule">' + esc(b.rules[b.rules.length - 1]) + '</div></div>';
+    }).join('');
+    $('hunters').innerHTML = s.hunters.map(function (h, i) { return '<tr><td>' + (i + 1) + '</td><td>' + esc(h[0]) + '</td><td>' + h[1] + ' pts</td></tr>'; }).join('') || '<tr><td class="muted">No reports yet. Scan, play, break it.</td></tr>';
+    $('themeId').textContent = s.theme;
+    $('themes').textContent = s.themes.map(function (t) { return t.id + ':' + t.status; }).join(' · ');
+    if (s.stable !== curStable || s.theme !== curTheme) { curStable = s.stable; curTheme = s.theme; drawLook(); }
+  });
+}
+// render the current stable version with the current theme, for the vision loop
+function withGame(cb) {
+  fetch('/api/assign?pid=control-' + Math.random()).then(function (r) { return r.json(); }).then(function (a) {
+    fetch('/v/' + curStable + '/game.js').then(function (r) { return r.text(); }).then(function (code) {
+      var G = (new Function(code + '\n;return GAME;'))();
+      cb(G, a.theme);
+    });
+  });
+}
+function shot(G, theme) {
+  var c = document.createElement('canvas'); c.width = 360; c.height = 560; var x = c.getContext('2d');
+  var st = G.create(7); for (var i = 0; i < 90; i++) { try { G.step(st, { dx: Math.sin(i / 20), dy: -0.3 }); } catch (e) { break; } }
+  st.pickups.push({ x: 120, y: 300, kind: 'coin' }, { x: 240, y: 360, kind: 'potion' });
+  G.render(x, st, theme); return c;
+}
+function drawLook() { withGame(function (G, theme) { var c = shot(G, theme); $('look').getContext('2d').drawImage(c, 0, 0); }); }
+$('style').onclick = function () {
+  var btn = this; btn.disabled = true; btn.textContent = 'Vision working…';
+  withGame(function (G, theme) {
+    var cur = shot(G, theme).toDataURL('image/png');
+    post('/api/style/propose', { screenshot: cur }).then(function (p) {
+      if (p.error) throw new Error(p.error);
+      var cand = shot(G, p.theme).toDataURL('image/png');
+      return post('/api/style/judge', { current: cur, candidate: cand, theme: p.theme, why: p.why });
+    }).catch(function (e) { addEv({ at: Date.now(), kind: 'error', msg: e.message }); })
+      .finally(function () { btn.disabled = false; btn.textContent = 'Run one look step'; refresh(); });
+  });
+};
+$('goal').onchange = function () { post('/api/goal', { goal: this.value }); };
+$('gen').onclick = function () { post('/api/gen'); };
+$('learn').onclick = function () { post('/api/learn'); };
+$('auto').onclick = function () { post('/api/autopilot', { on: this.className !== 'on' }).then(refresh); };
+document.querySelectorAll('[data-pb]').forEach(function (b) { b.onclick = function () { post('/api/playbook/' + b.dataset.pb).then(refresh); }; });
+refresh(); setInterval(refresh, 3000);
+</script>
+</body>
+</html>

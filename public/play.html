@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Patchwork Dungeon</title>
+<style>
+  :root { --bg: #0d0b14; --fg: #f1ecff; --mute: #9b93b8; --accent: #ff9b3d; --ok: #3ddc97; --bad: #ff5470; --panel: #1a1626; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; overscroll-behavior: none; }
+  body { display: flex; flex-direction: column; align-items: center; touch-action: none; user-select: none; -webkit-user-select: none; }
+  header { width: 100%; max-width: 420px; display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; }
+  header b { color: var(--accent); letter-spacing: .5px; }
+  #ver { font: 12px monospace; color: var(--mute); }
+  #wrap { position: relative; width: min(100vw, 360px * 1); }
+  canvas { display: block; width: 100%; height: auto; border-radius: 10px; background: #000; }
+  .overlay { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgba(10,8,18,.88); border-radius: 10px; padding: 20px; text-align: center; }
+  .overlay.on { display: flex; }
+  .overlay h2 { margin: 0; font-size: 22px; }
+  button { font: inherit; border: 0; border-radius: 999px; padding: 10px 18px; background: var(--accent); color: #1a0e00; font-weight: 700; cursor: pointer; }
+  button.ghost { background: var(--panel); color: var(--fg); }
+  input, textarea { font: inherit; width: 100%; max-width: 300px; padding: 10px; border-radius: 10px; border: 1px solid #332c4a; background: var(--panel); color: var(--fg); }
+  #bar { width: 100%; max-width: 420px; display: flex; gap: 8px; padding: 10px 16px; justify-content: center; flex-wrap: wrap; }
+  #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--panel); border: 1px solid #332c4a; padding: 10px 14px; border-radius: 12px; display: none; max-width: 90vw; }
+  .pts { color: var(--ok); font-weight: 700; }
+  #news { width: 100%; max-width: 420px; padding: 0 16px 8px; color: var(--mute); font-size: 12px; min-height: 18px; }
+</style>
+</head>
+<body>
+<header><b>PATCHWORK DUNGEON</b><span id="ver">loading…</span></header>
+<div id="news"></div>
+<div id="wrap">
+  <canvas id="c" width="360" height="560"></canvas>
+  <div class="overlay on" id="start">
+    <h2>Find bugs. Get points.</h2>
+    <div style="color:var(--mute)">This game is being rebuilt live by an AI agent. Crashes and feedback you send become fixes. Fixes ship while you play.</div>
+    <input id="name" maxlength="20" placeholder="Your name for the bug-hunter board">
+    <button id="go">Play</button>
+    <div style="color:var(--mute);font-size:12px">Drag anywhere to move. You shoot automatically.</div>
+  </div>
+  <div class="overlay" id="crash">
+    <h2 style="color:var(--bad)">💥 The game crashed</h2>
+    <div>The agent has the crash report. <span class="pts">+10 bug-hunter points</span></div>
+    <code id="crashmsg" style="font-size:11px;color:var(--mute)"></code>
+    <button id="again1">Play again</button>
+  </div>
+  <div class="overlay" id="end">
+    <h2 id="endtitle"></h2>
+    <div id="endsub" style="color:var(--mute)"></div>
+    <textarea id="fb" rows="3" placeholder="What would make this game better?"></textarea>
+    <div style="display:flex;gap:8px"><button class="ghost" data-r="1">👎</button><button class="ghost" data-r="5">👍</button></div>
+    <button id="again2">Play again</button>
+  </div>
+</div>
+<div id="bar"><button class="ghost" id="fbBtn">💬 Suggest a change</button></div>
+<div id="toast"></div>
+<script>
+(function () {
+  var pid = localStorage.getItem('pw_pid') || (Math.random().toString(36).slice(2)); try { localStorage.setItem('pw_pid', pid); } catch (e) {}
+  var name = ''; try { name = localStorage.getItem('pw_name') || ''; } catch (e) {}
+  var $ = function (id) { return document.getElementById(id); };
+  $('name').value = name;
+  var ctx = $('c').getContext('2d'), G = null, st = null, V = null, THEME = null, running = false, input = { dx: 0, dy: 0 };
+  var queue = [];
+  function t(ev) { ev.pid = pid; ev.name = name; ev.v = V; queue.push(ev); }
+  setInterval(function () { if (!queue.length) return; var b = queue.splice(0); fetch('/api/t', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).catch(function () {}); }, 1000);
+  function toast(html) { var el = $('toast'); el.innerHTML = html; el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(function () { el.style.display = 'none'; }, 3500); }
+
+  function load(cb) {
+    fetch('/api/assign?pid=' + encodeURIComponent(pid)).then(function (r) { return r.json(); }).then(function (a) {
+      THEME = a.theme;
+      if (a.v === V && G) return cb();
+      var s = document.createElement('script');
+      s.src = '/v/' + a.v + '/game.js?' + Date.now();
+      s.onload = function () { var old = V; V = a.v; G = window.GAME; $('ver').textContent = 'version ' + V; if (old && old !== V) { $('news').textContent = 'New version: ' + a.summary; toast('🛠 You are now on <b>' + V + '</b>: ' + a.summary); } cb(); };
+      s.onerror = function () { toast('Could not load the game'); };
+      document.body.appendChild(s);
+    });
+  }
+  function start() {
+    name = $('name').value.trim().slice(0, 20); try { localStorage.setItem('pw_name', name); } catch (e) {}
+    load(function () {
+      ['start', 'crash', 'end'].forEach(function (k) { $(k).classList.remove('on'); });
+      st = G.create((Math.random() * 1e9) | 0); running = true; lastRoom = 0;
+      t({ type: 'start' });
+    });
+  }
+  var lastRoom = 0;
+  function crash(e) {
+    running = false;
+    var msg = (e && e.message) || String(e);
+    t({ type: 'error', msg: msg, room: st && st.room });
+    $('crashmsg').textContent = msg; $('crash').classList.add('on');
+  }
+  function frame() {
+    if (running && G && st) {
+      try {
+        G.step(st, input);
+        if (st.room !== lastRoom) { lastRoom = st.room; t({ type: 'room', room: st.room }); }
+        G.render(ctx, st, THEME);
+        if (st.over) {
+          running = false;
+          var d = st.events.filter(function (e) { return e.t === 'death'; })[0];
+          if (st.won) t({ type: 'win' }); else if (d) t({ type: 'death', room: d.room, x: Math.round(d.x), y: Math.round(d.y) });
+          $('endtitle').textContent = st.won ? '🏆 You beat the boss!' : '☠ You died in ' + G.CONFIG.rooms[st.room].name;
+          $('endsub').textContent = 'Score ' + st.score + '. Tell the agent what to change:';
+          $('end').classList.add('on');
+        }
+      } catch (e) { crash(e); }
+    }
+    requestAnimationFrame(frame);
+  }
+  window.addEventListener('error', function (e) { if (running) crash(e.error || e.message); });
+
+  // drag-anywhere joystick + keyboard
+  var origin = null, keys = {};
+  function pt(e) { var p = e.touches ? e.touches[0] : e; return { x: p.clientX, y: p.clientY }; }
+  document.addEventListener('pointerdown', function (e) { if (e.target.closest('.overlay, button, textarea, input')) return; origin = pt(e); });
+  document.addEventListener('pointermove', function (e) { if (!origin) return; var p = pt(e), dx = p.x - origin.x, dy = p.y - origin.y, l = Math.hypot(dx, dy); input = l < 6 ? { dx: 0, dy: 0 } : { dx: dx / Math.max(l, 40), dy: dy / Math.max(l, 40) }; });
+  document.addEventListener('pointerup', function () { origin = null; input = { dx: 0, dy: 0 }; });
+  function kb() { input = { dx: (keys.ArrowRight || keys.d ? 1 : 0) - (keys.ArrowLeft || keys.a ? 1 : 0), dy: (keys.ArrowDown || keys.s ? 1 : 0) - (keys.ArrowUp || keys.w ? 1 : 0) }; }
+  document.addEventListener('keydown', function (e) { if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return; keys[e.key] = 1; kb(); });
+  document.addEventListener('keyup', function (e) { keys[e.key] = 0; kb(); });
+
+  function sendFb(rating) {
+    var text = $('fb').value.trim(); if (!text && !rating) return;
+    t({ type: 'feedback', text: text || (rating > 3 ? 'liked it' : 'did not like it'), rating: rating || null });
+    $('fb').value = ''; toast('Sent to the agent. <span class="pts">+5 points</span>, +20 more if it ships.');
+  }
+  document.querySelectorAll('[data-r]').forEach(function (b) { b.onclick = function () { sendFb(+b.dataset.r); }; });
+  $('fbBtn').onclick = function () { var text = prompt('What would make this game better?'); if (text) { t({ type: 'feedback', text: text }); toast('Sent to the agent. <span class="pts">+5 points</span>'); } };
+  $('go').onclick = start; $('again1').onclick = start; $('again2').onclick = function () { if ($('fb').value.trim()) sendFb(null); start(); };
+  // pick up promoted versions between runs
+  setInterval(function () { if (!running) return; fetch('/api/assign?pid=' + encodeURIComponent(pid)).then(function (r) { return r.json(); }).then(function (a) { THEME = a.theme; if (a.v !== V) $('news').textContent = 'A new version (' + a.v + ') is ready. It loads on your next run.'; }); }, 4000);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

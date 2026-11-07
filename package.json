@@ -1,0 +1,9 @@
+{
+  "name": "patchwork",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A game that fixes itself: a self-improving coding agent with held-out gates, canaries and rollback. Built at the AIE Code Summit hackathon.",
+  "scripts": { "start": "node server.mjs", "bench": "node scripts/benchcheck.mjs" },
+  "engines": { "node": ">=20" }
+}
