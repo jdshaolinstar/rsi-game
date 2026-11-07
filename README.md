@@ -72,5 +72,6 @@ Everything in this repository was written on Nov 7, 2026, during the event, with
 ## Honest limits
 
 - The bot players are scripted, not people. They are labeled as simulated throughout.
-- The held-out bug bench is small: 6 tasks. With `muse-wonder-1.0` the base agent already solves most of them, so skillbook proposals are often discarded. That is the gate working, but the room for improvement there is small.
+- The held-out bug bench is small: 6 tasks. In the logged run ([skills/RUN-LOG.md](skills/RUN-LOG.md)), manifest v1 fixed 0/6 and manifest v2, with the agent-written `skill_002`, fixed 6/6. That's one run on one small bench, not a general benchmark. An earlier run discarded the same kind of skill when model calls timed out.
+- NEW GAME FROM RSI's with-vs-without comparison is a single run each time, and the baseline call sometimes times out. When it does, the log says there was no fair comparison.
 - Canary decisions with few real players are weak evidence. The control room shows how many real sessions each decision used.
