@@ -13,6 +13,8 @@ Built for the AIE Code Summit hackathon, Nov 7, 2026. Problem statement: **The S
 - **Report and suggest.** Crashes are caught automatically. Thumbs up or down and written feedback go into a persistent inbox. Each item is routed by Muse Spark to the code Fixer (gameplay, bugs, difficulty) or the vision loop ("not cute enough"), and tracked from open to in test to shipped.
 - **Set goals in plain words.** "Players should play longer" is mapped by Muse Spark to measurable signals (session time, reaching the boss, wins, coins, no crashes). Goals stack, and each version records what it optimized for.
 - **Choose the update schedule:** manually, after every N play sessions, after every N feedback items, every N minutes, or continuously.
+- **Share a version.** The share button links to `/?v=vN`. Shares are counted per version as a real-player signal; bots can't share, so shares never gate a code change.
+- **NEW GAME FROM RSI.** Describe a game, or let Muse Spark suggest one players will share. The agent builds it twice in parallel: WITH the confirmed skills, the best and most-shared version, shipped feedback and goals, and WITHOUT any of that. Both run the same held-out bot playtests. The with-skills game ships if it's playable, the baseline stays playable for comparison, and the A/B is recorded on the version.
 - **Choose the Fixer budget:** Fast (about 10 s per rewrite, the default), Normal or Deep.
 
 ## How it works

@@ -1,0 +1,111 @@
+{
+  "current": 2,
+  "skills": {
+    "skill_001": {
+      "id": "skill_001",
+      "created": "2026-11-07T23:21:43.962Z",
+      "status": "confirmed",
+      "context": "starting rule",
+      "text": "Make the smallest change that fixes the root cause.",
+      "why": "baseline"
+    },
+    "skill_002": {
+      "id": "skill_002",
+      "created": "2026-11-07T23:23:35.048Z",
+      "status": "confirmed",
+      "context": "learned from 4 failure(s): T1; T2; T3",
+      "text": "Do not stop at the reported symptom: trace and test the complete end-to-end path from initial state to the intended final outcome, auditing every step the fix depends on and every step it makes newly reachable for latent root causes — such as state used before initialization, conditions made unreachable by constraints imposed elsewhere, and computations that inconsistently deviate from their configured values. Fix each blocker at its source and submit only after a full end-to-end run completes s",
+      "why": "Each patch was locally correct but left other blockers on the same progression path, so end-to-end checks still failed; in one case removing an early blocker exposed a later crash. A full-path audit and completion test would have revealed and fixed those hidden failures before submitting."
+    }
+  },
+  "manifests": [
+    {
+      "v": 1,
+      "parent": null,
+      "created": "2026-11-07T23:21:43.963Z",
+      "status": "superseded",
+      "skills": [
+        "skill_001"
+      ],
+      "heldout": 0,
+      "of": 6,
+      "detail": [
+        {
+          "id": "H1",
+          "pass": false,
+          "reason": "hidden check failed: crash 0%, boss 80%, tuning values changed or bug masked"
+        },
+        {
+          "id": "H2",
+          "pass": false,
+          "reason": "hidden check failed: crash 0%, boss 0%, tuning values changed or bug masked"
+        },
+        {
+          "id": "H3",
+          "pass": false,
+          "reason": "hidden check failed: crash 0%, boss 40%, tuning values changed or bug masked"
+        },
+        {
+          "id": "H4",
+          "pass": false,
+          "reason": "hidden check failed: crash 0%, boss 20%, tuning values changed or bug masked"
+        },
+        {
+          "id": "H5",
+          "pass": false,
+          "reason": "hidden check failed: crash 0%, boss 0%, tuning values changed or bug masked"
+        },
+        {
+          "id": "H6",
+          "pass": false,
+          "reason": "hidden check failed: crash 0%, boss 0%, tuning values changed or bug masked"
+        }
+      ]
+    },
+    {
+      "v": 2,
+      "parent": 1,
+      "created": "2026-11-07T23:23:35.049Z",
+      "status": "adopted",
+      "skills": [
+        "skill_001",
+        "skill_002"
+      ],
+      "heldout": 6,
+      "of": 6,
+      "excluded": 0,
+      "detail": [
+        {
+          "id": "H1",
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "id": "H2",
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "id": "H3",
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "id": "H4",
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "id": "H5",
+          "pass": true,
+          "reason": "ok"
+        },
+        {
+          "id": "H6",
+          "pass": true,
+          "reason": "ok"
+        }
+      ]
+    }
+  ]
+}

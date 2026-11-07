@@ -346,7 +346,7 @@ export function tick() { checkSchedule('timer'); }
 async function fixTask(t, rules) {
   const code = taskSource(t);
   try {
-    const prop = await fixer({ goals: [{ text: 'Fix the reported problem so the game plays as designed.' }], code, signals: {}, rules, requests: [{ id: 'r1', kind: 'feedback', text: t.symptom, v: 'bench' }], timeoutMs: 150000, maxTokens: 32000 });
+    const prop = await fixer({ goals: [{ text: 'Fix the reported problem so the game plays as designed.' }], code, signals: {}, rules, requests: [{ id: 'r1', kind: 'feedback', text: t.symptom, v: 'bench' }], timeoutMs: 240000, maxTokens: 32000 });
     let fixed;
     try { fixed = applyEdits(code, prop.edits); } catch (e) { return { id: t.id, pass: false, reason: 'patch did not apply: ' + e.message, prop }; }
     const r = checkTask(t, fixed);
