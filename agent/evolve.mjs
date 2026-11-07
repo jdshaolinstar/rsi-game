@@ -20,7 +20,7 @@ const pct = x => Math.round(x * 100) + '%';
 const now = () => new Date().toISOString();
 
 // Processing budget per Fixer call. Fast is the hackathon default.
-export const BUDGETS = { fast: { label: 'Fast (~10s)', maxTokens: 8000, timeoutMs: 45000 }, normal: { label: 'Normal (~25s)', maxTokens: 16000, timeoutMs: 90000 }, deep: { label: 'Deep (~60s)', maxTokens: 32000, timeoutMs: 180000 } };
+export const BUDGETS = { fast: { label: 'Fast', maxTokens: 8000, timeoutMs: 120000 }, normal: { label: 'Normal', maxTokens: 16000, timeoutMs: 150000 }, deep: { label: 'Deep', maxTokens: 32000, timeoutMs: 240000 } };
 
 // ---------- goals: free text, stacked, mapped to measurable signals ----------
 export const SIGNALS = {
@@ -220,9 +220,17 @@ game.js:
 ${code}
 \`\`\``;
   const B = BUDGETS[S.budget] || BUDGETS.fast;
-  return chat(MODELS.coder, [{ role: 'system', content: sys }, { role: 'user', content: user + `
+  const msgs = [{ role: 'system', content: sys }, { role: 'user', content: user + `
 
-Budget: keep "diagnosis" under ${S.budget === 'fast' ? 40 : 120} words and edits minimal.` }], { temperature: 0.3, maxTokens: maxTokens || B.maxTokens, timeoutMs: timeoutMs || B.timeoutMs });
+Budget: keep "diagnosis" under ${S.budget === 'fast' ? 40 : 120} words and edits minimal.` }];
+  try {
+    return await chat(MODELS.coder, msgs, { temperature: 0.3, maxTokens: maxTokens || B.maxTokens, timeoutMs: timeoutMs || B.timeoutMs });
+  } catch (err) {
+    // routing fallback: if the strong coder times out or returns nothing, the fast model takes the task
+    if (!/aborted|bad JSON|timed out/i.test(err.message)) throw err;
+    emit('route', `${MODELS.coder} did not answer in time (${err.message.slice(0, 60)}). Routing this patch to ${MODELS.fast}.`);
+    return chat(MODELS.fast, msgs, { temperature: 0.3, timeoutMs: 90000 });
+  }
 }
 
 // ---------- goals ----------
