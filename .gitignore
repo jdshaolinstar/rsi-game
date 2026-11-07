@@ -8,3 +8,6 @@ data/runs/
 server.log
 data-server.log
 data/
+versions/*
+!versions/v1/
+skills/index.json

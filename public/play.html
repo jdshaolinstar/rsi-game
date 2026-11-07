@@ -11,7 +11,11 @@
   body { display: flex; flex-direction: column; align-items: center; touch-action: none; user-select: none; -webkit-user-select: none; }
   header { width: 100%; max-width: 420px; display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; }
   header b { color: var(--accent); letter-spacing: .5px; }
-  #ver { font: 12px monospace; color: var(--mute); }
+  #vpick { font: 12px monospace; background: var(--panel); color: var(--fg); border: 1px solid #332c4a; border-radius: 8px; padding: 4px; max-width: 170px; }
+  #whatsnew { width: 100%; max-width: 420px; padding: 0 16px 8px; font-size: 12px; }
+  #whatsnew details { background: var(--panel); border-radius: 10px; padding: 8px 10px; }
+  #whatsnew summary { cursor: pointer; color: var(--accent); font-weight: 700; }
+  #whatsnew li { color: var(--mute); }
   #wrap { position: relative; width: min(100vw, 360px * 1); }
   canvas { display: block; width: 100%; height: auto; border-radius: 10px; background: #000; }
   .overlay { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgba(10,8,18,.88); border-radius: 10px; padding: 20px; text-align: center; }
@@ -27,8 +31,9 @@
 </style>
 </head>
 <body>
-<header><b>PATCHWORK DUNGEON</b><span id="ver">loading…</span></header>
+<header><b>PATCHWORK DUNGEON</b><select id="vpick" title="Pick a version to play"><option value="">Latest</option></select></header>
 <div id="news"></div>
+<div id="whatsnew"></div>
 <div id="wrap">
   <canvas id="c" width="360" height="560"></canvas>
   <div class="overlay on" id="start">
@@ -61,18 +66,32 @@
   var $ = function (id) { return document.getElementById(id); };
   $('name').value = name;
   var ctx = $('c').getContext('2d'), G = null, st = null, V = null, THEME = null, running = false, input = { dx: 0, dy: 0 };
-  var queue = [];
+  var queue = [], picked = '';
+  function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
+  function showNew(a) {
+    var li = '';
+    if (a.addressed && a.addressed.length) li += '<li>Fixed from player reports: ' + a.addressed.map(function (x) { return '"' + esc(x.slice(0, 80)) + '"'; }).join(', ') + '</li>';
+    if (a.goals && a.goals.length) li += '<li>Also optimizing for: ' + a.goals.map(esc).join('; ') + '</li>';
+    $('whatsnew').innerHTML = '<details' + (picked ? ' open' : '') + '><summary>' + a.v + (a.v === a.stable ? ' (live)' : ' (' + esc(a.status || '') + ')') + ': what changed</summary><div style="margin-top:6px">' + esc(a.summary) + '</div><ul style="margin:6px 0 0;padding-left:18px">' + li + '</ul></details>';
+  }
+  function listVersions() {
+    fetch('/api/versions').then(function (r) { return r.json(); }).then(function (d) {
+      var sel = $('vpick'), cur = picked;
+      sel.innerHTML = '<option value="">Latest (' + d.stable + ')</option>' + d.versions.slice().reverse().map(function (v) { return '<option value="' + v.id + '">' + v.id + ' · ' + v.status + '</option>'; }).join('');
+      sel.value = cur;
+    });
+  }
   function t(ev) { ev.pid = pid; ev.name = name; ev.v = V; queue.push(ev); }
   setInterval(function () { if (!queue.length) return; var b = queue.splice(0); fetch('/api/t', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).catch(function () {}); }, 1000);
   function toast(html) { var el = $('toast'); el.innerHTML = html; el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(function () { el.style.display = 'none'; }, 3500); }
 
   function load(cb) {
-    fetch('/api/assign?pid=' + encodeURIComponent(pid)).then(function (r) { return r.json(); }).then(function (a) {
-      THEME = a.theme;
+    fetch('/api/assign?pid=' + encodeURIComponent(pid) + (picked ? '&v=' + picked : '')).then(function (r) { return r.json(); }).then(function (a) {
+      THEME = a.theme; showNew(a);
       if (a.v === V && G) return cb();
       var s = document.createElement('script');
       s.src = '/v/' + a.v + '/game.js?' + Date.now();
-      s.onload = function () { var old = V; V = a.v; G = window.GAME; $('ver').textContent = 'version ' + V; if (old && old !== V) { $('news').textContent = 'New version: ' + a.summary; toast('🛠 You are now on <b>' + V + '</b>: ' + a.summary); } cb(); };
+      s.onload = function () { var old = V; V = a.v; G = window.GAME; listVersions(); if (old && old !== V) { $('news').textContent = 'New version: ' + a.summary; toast('🛠 You are now on <b>' + V + '</b>: ' + a.summary); } cb(); };
       s.onerror = function () { toast('Could not load the game'); };
       document.body.appendChild(s);
     });
@@ -129,9 +148,11 @@
   }
   document.querySelectorAll('[data-r]').forEach(function (b) { b.onclick = function () { sendFb(+b.dataset.r); }; });
   $('fbBtn').onclick = function () { var text = prompt('What would make this game better?'); if (text) { t({ type: 'feedback', text: text }); toast('Sent to the agent. <span class="pts">+5 points</span>'); } };
+  $('vpick').onchange = function () { picked = this.value; G = null; V = null; running = false; ['crash', 'end'].forEach(function (k) { $(k).classList.remove('on'); }); $('start').classList.add('on'); load(function () {}); };
+  listVersions();
   $('go').onclick = start; $('again1').onclick = start; $('again2').onclick = function () { if ($('fb').value.trim()) sendFb(null); start(); };
   // pick up promoted versions between runs
-  setInterval(function () { if (!running) return; fetch('/api/assign?pid=' + encodeURIComponent(pid)).then(function (r) { return r.json(); }).then(function (a) { THEME = a.theme; if (a.v !== V) $('news').textContent = 'A new version (' + a.v + ') is ready. It loads on your next run.'; }); }, 4000);
+  setInterval(function () { if (!running || picked) return; fetch('/api/assign?pid=' + encodeURIComponent(pid)).then(function (r) { return r.json(); }).then(function (a) { THEME = a.theme; if (a.v !== V) $('news').textContent = 'A new version (' + a.v + ') is ready. It loads on your next run.'; }); }, 4000);
   requestAnimationFrame(frame);
 })();
 </script>

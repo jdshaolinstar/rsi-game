@@ -23,7 +23,7 @@ export const MODELS = {
 export const usage = { calls: 0, inTok: 0, outTok: 0, ms: 0, byModel: {} };
 const DAILY_CALL_CAP = Number(process.env.CALL_CAP || 3000);
 
-export async function chat(model, messages, { json = true, temperature, timeoutMs = 90000 } = {}) {
+export async function chat(model, messages, { json = true, temperature, timeoutMs = 90000, maxTokens } = {}) {
   if (usage.calls >= DAILY_CALL_CAP) throw new Error('call cap reached');
   const t = Date.now();
   const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), timeoutMs);
@@ -31,6 +31,7 @@ export async function chat(model, messages, { json = true, temperature, timeoutM
     const body = { model, messages };
     if (json) body.response_format = { type: 'json_object' };
     if (temperature != null) body.temperature = temperature;
+    if (maxTokens) body.max_tokens = maxTokens;
     const r = await fetch(`${BASE}/chat/completions`, {
       method: 'POST', signal: ctl.signal,
       headers: { Authorization: `Bearer ${process.env.MODEL_API_KEY}`, 'Content-Type': 'application/json' },

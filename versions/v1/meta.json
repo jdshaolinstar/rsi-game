@@ -1,0 +1,11 @@
+{
+  "id": "v1",
+  "parent": null,
+  "status": "retired",
+  "kind": "code",
+  "summary": "First draft from the brief (shipped with bugs)",
+  "created": 1794091463104,
+  "goals": [
+    "Fewer crashes"
+  ]
+}
