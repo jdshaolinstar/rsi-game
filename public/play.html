@@ -57,7 +57,7 @@
     <button id="again2">Play again</button>
   </div>
 </div>
-<div id="bar"><button class="ghost" id="fbBtn">💬 Suggest a change</button></div>
+<div id="bar"><button class="ghost" id="fbBtn">💬 Suggest a change</button><button class="ghost" id="shareBtn">🔗 Share this version</button></div>
 <div id="toast"></div>
 <script>
 (function () {
@@ -77,7 +77,7 @@
   function listVersions() {
     fetch('/api/versions').then(function (r) { return r.json(); }).then(function (d) {
       var sel = $('vpick'), cur = picked;
-      sel.innerHTML = '<option value="">Latest (' + d.stable + ')</option>' + d.versions.slice().reverse().map(function (v) { return '<option value="' + v.id + '">' + v.id + ' · ' + v.status + '</option>'; }).join('');
+      sel.innerHTML = '<option value="">Latest (' + d.stable + ')</option>' + d.versions.slice().reverse().map(function (v) { return '<option value="' + v.id + '">' + v.id + ' · ' + (v.game && v.game !== 'Patchwork Dungeon' ? v.game.slice(0, 18) + ' · ' : '') + v.status + '</option>'; }).join('');
       sel.value = cur;
     });
   }
@@ -150,6 +150,13 @@
   $('fbBtn').onclick = function () { var text = prompt('What would make this game better?'); if (text) { t({ type: 'feedback', text: text }); toast('Sent to the agent. <span class="pts">+5 points</span>'); } };
   $('vpick').onchange = function () { picked = this.value; G = null; V = null; running = false; ['crash', 'end'].forEach(function (k) { $(k).classList.remove('on'); }); $('start').classList.add('on'); load(function () {}); };
   listVersions();
+  $('shareBtn').onclick = function () {
+    var url = location.origin + '/?v=' + (V || ''), done = function () { t({ type: 'share' }); toast('Shared! <span class="pts">+15 points</span>. Shares teach the agent what people love.'); };
+    if (navigator.share) navigator.share({ title: 'Patchwork Dungeon ' + V, text: 'This game rebuilds itself from player feedback. Try ' + V + ':', url: url }).then(done).catch(function () {});
+    else if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, function () { prompt('Copy this link', url); done(); });
+    else { prompt('Copy this link', url); done(); }
+  };
+  var qv = new URLSearchParams(location.search).get('v'); if (qv) picked = qv;
   $('go').onclick = start; $('again1').onclick = start; $('again2').onclick = function () { if ($('fb').value.trim()) sendFb(null); start(); };
   // pick up promoted versions between runs
   setInterval(function () { if (!running || picked) return; fetch('/api/assign?pid=' + encodeURIComponent(pid)).then(function (r) { return r.json(); }).then(function (a) { THEME = a.theme; if (a.v !== V) $('news').textContent = 'A new version (' + a.v + ') is ready. It loads on your next run.'; }); }, 4000);

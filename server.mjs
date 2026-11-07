@@ -93,6 +93,7 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, A.S.schedule);
       }
       if (p === '/api/budget') { if (A.BUDGETS[b.budget]) { A.S.budget = b.budget; A.emit('schedule', `Fixer budget: ${A.BUDGETS[b.budget].label}`); } return send(res, 200, { budget: A.S.budget }); }
+      if (p === '/api/newgame') { A.newGame(String(b.brief || '').slice(0, 400)); return send(res, 200, { started: true }); }
       if (p === '/api/gen') { A.runGeneration(); return send(res, 200, { started: true }); }
       if (p === '/api/learn') { A.learn(); return send(res, 200, { started: true }); }
       if (p === '/api/canary') { if (b.share != null) A.S.canaryShare = Math.max(0, Math.min(1, b.share)); if (b.ms) A.S.canaryMs = Math.max(3000, Math.min(120000, b.ms)); return send(res, 200, { share: A.S.canaryShare, ms: A.S.canaryMs }); }

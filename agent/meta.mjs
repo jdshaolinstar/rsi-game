@@ -23,7 +23,15 @@ export const MODELS = {
 export const usage = { calls: 0, inTok: 0, outTok: 0, ms: 0, byModel: {} };
 const DAILY_CALL_CAP = Number(process.env.CALL_CAP || 3000);
 
-export async function chat(model, messages, { json = true, temperature, timeoutMs = 90000, maxTokens } = {}) {
+export async function chat(model, messages, opts = {}) {
+  let last;
+  for (let i = 0; i < 3; i++) {
+    try { return await chatOnce(model, messages, opts); }
+    catch (e) { last = e; if (!/fetch failed|ECONNRESET|ETIMEDOUT|socket|429|50d/.test(e.message)) throw e; await new Promise(r => setTimeout(r, 1500 * (i + 1))); }
+  }
+  throw last;
+}
+async function chatOnce(model, messages, { json = true, temperature, timeoutMs = 90000, maxTokens } = {}) {
   if (usage.calls >= DAILY_CALL_CAP) throw new Error('call cap reached');
   const t = Date.now();
   const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), timeoutMs);

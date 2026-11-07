@@ -77,6 +77,12 @@
       <div class="row">Fixer budget <select id="budget"></select></div>
       <div class="muted" style="font-size:11px">Every code change must win (or hold) on held-out bot playtests, pass guardrails, then survive a canary on real players. Looks must win a vision vote in both orders.</div>
     </section>
+    <section>
+      <h2>New game from RSI</h2>
+      <div class="row"><input type="text" id="brief" placeholder="Describe a game, or leave empty for a suggestion"></div>
+      <button class="primary" id="newgame">🎲 NEW GAME FROM RSI</button>
+      <div class="muted" style="font-size:11px">Builds a new game twice: WITH the learned skills, best and most-shared version and shipped feedback, and WITHOUT them. Both run the same held-out bot playtests. The without-skills game stays playable for comparison.</div>
+    </section>
     <section><h2>Inbox: crashes and feedback</h2><table id="inbox"></table></section>
     <section><h2>Playbooks</h2>
       <button data-pb="crash">💥 Bad deploy: crash</button><button data-pb="annoy">😤 Fast slimes</button><button data-pb="sabotage">🕳 Cheating patch</button><button data-pb="reset">↺ Reset to v1</button>
@@ -129,7 +135,7 @@ function refresh() {
       return '<tr><td>' + i.id + '</td><td>' + (i.kind === 'crash' ? '💥 ×' + i.count : i.rating ? (i.rating > 3 ? '👍' : '👎') : '💬') + '</td><td>' + esc(i.text.slice(0, 90)) + '<div class="muted">' + esc(i.from) + ' · on ' + i.v + ' · to ' + (i.route === 'look' ? 'vision' : 'Fixer') + '</div></td><td class="st s-' + i.status.split(' ')[0] + '">' + i.status + (i.version ? ' ' + i.version : '') + '</td></tr>';
     }).join('') || '<tr><td class="muted">Nothing yet. Play, crash, send feedback.</td></tr>';
     $('versions').innerHTML = '<tr><th>ver</th><th>status</th><th>change</th><th>held-out</th></tr>' + s.versions.slice().reverse().map(function (v) {
-      return '<tr class="click" data-v="' + v.id + '"><td>' + v.id + (v.kind === 'look' ? ' 🎨' : '') + '</td><td class="st s-' + String(v.status).split(' ')[0] + '">' + v.status + '</td><td>' + esc(v.summary) + (v.reason ? '<div class="muted">' + esc(v.reason) + '</div>' : '') + '</td><td>' + (v.before != null ? v.before.toFixed(2) + '→' + v.after.toFixed(2) : (v.votes ? 'vision 2/2' : '')) + '</td></tr>';
+      return '<tr class="click" data-v="' + v.id + '"><td>' + v.id + (v.kind === 'look' ? ' 🎨' : v.kind === 'newgame' ? ' 🎲' : '') + '</td><td class="st s-' + String(v.status).split(' ')[0] + '">' + v.status + '</td><td>' + (v.game ? '<b>' + esc(v.game) + '</b> ' : '') + esc(v.summary) + (v.reason ? '<div class="muted">' + esc(v.reason) + '</div>' : '') + '<div class="muted">' + (v.plays || 0) + ' plays · ' + (v.shares || 0) + ' shares · <a style="color:var(--info)" target="_blank" href="/?v=' + v.id + '">play</a></div></td><td>' + (v.before != null ? v.before.toFixed(2) + '→' + v.after.toFixed(2) : (v.votes ? 'vision 2/2' : '')) + '</td></tr>';
     }).join('');
     document.querySelectorAll('[data-v]').forEach(function (r) { r.onclick = function () { openVersion(r.dataset.v); }; });
     $('skills').innerHTML = s.manifests.slice().reverse().map(function (m) {
@@ -151,6 +157,7 @@ function openVersion(id) {
   if (v.diagnosis) h += '<h2>Agent summary</h2><pre class="box">' + esc(v.diagnosis) + '</pre>';
   if (v.edits) h += '<h2>Code change</h2><pre class="box">' + esc(v.edits.map(function (x) { return '- ' + x.find + '\n+ ' + x.replace; }).join('\n\n')) + '</pre>';
   if (v.heldout) h += '<h2>Held-out playtests</h2><pre class="box">' + esc(JSON.stringify({ before: v.baseHeldout, after: v.heldout }, null, 1)) + '</pre>';
+  if (v.ab) h += '<h2>With skills vs without (held-out bots)</h2><table><tr><th></th><th>score</th><th>crash</th><th>boss</th><th>avg run</th></tr>' + ['withSkills', 'withoutSkills'].map(function (k) { var x = v.ab[k], m = x.metrics || {}; return '<tr><td>' + (k === 'withSkills' ? 'WITH skills' : 'WITHOUT') + '</td><td>' + x.score.toFixed(2) + '</td><td>' + (m.loadError ? 'failed' : Math.round(m.crashRate * 100) + '%') + '</td><td>' + (m.loadError ? '' : Math.round(m.reachBoss * 100) + '%') + '</td><td>' + (m.loadError ? esc(m.loadError).slice(0, 60) : Math.round(m.avgSeconds) + 's') + '</td></tr>'; }).join('') + '</table>';
   if (v.context) h += '<h2>Context the agent saw</h2><pre class="box">' + esc(JSON.stringify(v.context, null, 1)) + '</pre>';
   h += '<p><a style="color:var(--info)" target="_blank" href="/v/' + v.id + '/game.js">game.js</a> · <a style="color:var(--info)" target="_blank" href="/v/' + v.id + '/theme.json">theme.json</a> · <a style="color:var(--info)" target="_blank" href="/v/' + v.id + '/meta.json">meta.json</a></p>';
   $('drawerBody').innerHTML = h; $('drawer').classList.add('on');
@@ -188,6 +195,7 @@ $('goalText').onkeydown = function (e) { if (e.key === 'Enter') $('addGoal').cli
 document.querySelectorAll('[data-g]').forEach(function (b) { b.onclick = function () { post('/api/goal', { text: b.dataset.g }).then(refresh); }; });
 $('gen').onclick = function () { post('/api/gen'); };
 $('learn').onclick = function () { post('/api/learn'); };
+$('newgame').onclick = function () { post('/api/newgame', { brief: $('brief').value.trim() }); $('brief').value = ''; };
 $('sched').onchange = $('schedN').onchange = function () { post('/api/schedule', { mode: $('sched').value, n: +$('schedN').value }).then(refresh); };
 $('budget').onchange = function () { post('/api/budget', { budget: this.value }).then(refresh); };
 document.querySelectorAll('[data-pb]').forEach(function (b) { b.onclick = function () { post('/api/playbook/' + b.dataset.pb).then(refresh); }; });

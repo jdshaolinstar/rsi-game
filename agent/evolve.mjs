@@ -20,7 +20,7 @@ const pct = x => Math.round(x * 100) + '%';
 const now = () => new Date().toISOString();
 
 // Processing budget per Fixer call. Fast is the hackathon default.
-export const BUDGETS = { fast: { label: 'Fast (~10s)', maxTokens: 1800, timeoutMs: 30000 }, normal: { label: 'Normal (~25s)', maxTokens: 4000, timeoutMs: 60000 }, deep: { label: 'Deep (~60s)', maxTokens: 9000, timeoutMs: 120000 } };
+export const BUDGETS = { fast: { label: 'Fast (~10s)', maxTokens: 8000, timeoutMs: 45000 }, normal: { label: 'Normal (~25s)', maxTokens: 16000, timeoutMs: 90000 }, deep: { label: 'Deep (~60s)', maxTokens: 32000, timeoutMs: 180000 } };
 
 // ---------- goals: free text, stacked, mapped to measurable signals ----------
 export const SIGNALS = {
@@ -121,7 +121,7 @@ const rulesOf = m => m.skills.map(id => S.skills[id].text);
 
 // ---------- inbox: crashes, feedback, look requests ----------
 export function tele(v) {
-  return S.tele[v] ||= { players: new Set(), sessions: 0, errors: {}, deaths: [], rooms: {}, wins: 0 };
+  return S.tele[v] ||= { players: new Set(), sessions: 0, errors: {}, deaths: [], rooms: {}, wins: 0, shares: 0 };
 }
 const LOOK_WORDS = /\b(cute|ugly|pretty|color|colour|colors|look|looks|art|visual|style|bright|dark|beautiful|graphics|sprite|theme|vibe|aesthetic)\b/i;
 export function ingest(ev) {
@@ -132,6 +132,7 @@ export function ingest(ev) {
   if (ev.type === 'death') t.deaths.push({ room: ev.room, x: ev.x, y: ev.y });
   if (ev.type === 'room') t.rooms[ev.room] = (t.rooms[ev.room] || 0) + 1;
   if (ev.type === 'win') t.wins++;
+  if (ev.type === 'share') { t.shares++; credit(ev, 15); emit('signal', `${ev.name || 'A player'} shared ${v} (${t.shares} share${t.shares > 1 ? 's' : ''} on this version)`); }
   if (ev.type === 'error') {
     const k = String(ev.msg).slice(0, 140); t.errors[k] = (t.errors[k] || 0) + 1; credit(ev, 10);
     let item = S.inbox.find(i => i.kind === 'crash' && i.text === k && i.status !== 'shipped');
@@ -159,7 +160,7 @@ const openItems = route => S.inbox.filter(i => i.status === 'open' && i.route ==
 
 function realSignals(v) {
   const t = tele(v);
-  return { players: t.players.size, sessions: t.sessions, wins: t.wins, deathsByRoom: t.deaths.reduce((a, d) => (a[d.room] = (a[d.room] || 0) + 1, a), {}), reachedRoom: t.rooms };
+  return { players: t.players.size, sessions: t.sessions, wins: t.wins, shares: t.shares, deathsByRoom: t.deaths.reduce((a, d) => (a[d.room] = (a[d.room] || 0) + 1, a), {}), reachedRoom: t.rooms };
 }
 
 // ---------- schedule ----------
@@ -200,7 +201,7 @@ export function applyEdits(code, edits) {
   return code;
 }
 
-async function fixer({ goals, code, signals, rules, requests = [], recent = [] }) {
+async function fixer({ goals, code, signals, rules, requests = [], recent = [], timeoutMs }) {
   const sys = `You maintain a small browser dungeon game (game.js, pure JavaScript, ES5 style, runs in browsers and in a sandbox with only Math available). You improve it by proposing small, exact text edits.
 Confirmed skills from your skill manifest. Follow them:
 ${rules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
@@ -221,7 +222,7 @@ ${code}
   const B = BUDGETS[S.budget] || BUDGETS.fast;
   return chat(MODELS.coder, [{ role: 'system', content: sys }, { role: 'user', content: user + `
 
-Budget: keep "diagnosis" under ${S.budget === 'fast' ? 40 : 120} words and edits minimal.` }], { temperature: 0.3, maxTokens: B.maxTokens, timeoutMs: B.timeoutMs });
+Budget: keep "diagnosis" under ${S.budget === 'fast' ? 40 : 120} words and edits minimal.` }], { temperature: 0.3, maxTokens: B.maxTokens, timeoutMs: timeoutMs || B.timeoutMs });
 }
 
 // ---------- goals ----------
@@ -345,7 +346,7 @@ export function tick() { checkSchedule('timer'); }
 async function fixTask(t, rules) {
   const code = taskSource(t);
   try {
-    const prop = await fixer({ goals: [{ text: 'Fix the reported problem so the game plays as designed.' }], code, signals: {}, rules, requests: [{ id: 'r1', kind: 'feedback', text: t.symptom, v: 'bench' }] });
+    const prop = await fixer({ goals: [{ text: 'Fix the reported problem so the game plays as designed.' }], code, signals: {}, rules, requests: [{ id: 'r1', kind: 'feedback', text: t.symptom, v: 'bench' }], timeoutMs: 150000 });
     let fixed;
     try { fixed = applyEdits(code, prop.edits); } catch (e) { return { id: t.id, pass: false, reason: 'patch did not apply: ' + e.message, prop }; }
     const r = checkTask(t, fixed);
@@ -353,9 +354,10 @@ async function fixTask(t, rules) {
     return { id: t.id, pass: r.pass, reason: r.pass ? 'ok' : (viol.join('; ') || `hidden check failed: crash ${pct(r.metrics.crashRate)}, boss ${pct(r.metrics.reachBoss)}, tuning values changed or bug masked`), prop };
   } catch (e) { return { id: t.id, pass: false, reason: 'model error: ' + e.message }; }
 }
+async function pool(jobs, n) { const out = []; let i = 0; await Promise.all(Array.from({ length: n }, async () => { while (i < jobs.length) { const k = i++; out[k] = await jobs[k](); } })); return out; }
 export async function benchScore(rules, split) {
   const tasks = TASKS.filter(t => t.split === split);
-  const res = await Promise.all(tasks.map(t => fixTask(t, rules)));
+  const res = await pool(tasks.map(t => () => fixTask(t, rules)), 3);
   return { score: res.filter(r => r.pass).length, of: tasks.length, res };
 }
 
@@ -427,16 +429,97 @@ export async function judgeTheme(target, current, candidate, theme, why, noteIds
 }
 
 export function versionList() {
-  return Object.values(S.versions).sort((a, b) => a.created - b.created).map(v => ({ id: v.id, status: v.status, kind: v.kind, summary: v.summary, addressedText: v.addressedText || [], goals: v.goals || [], parent: v.parent, created: v.created }));
+  return Object.values(S.versions).sort((a, b) => a.created - b.created).map(v => ({ id: v.id, status: v.status, kind: v.kind, game: v.game || 'Patchwork Dungeon', shares: tele(v.id).shares, plays: tele(v.id).sessions, summary: v.summary, addressedText: v.addressedText || [], goals: v.goals || [], parent: v.parent, created: v.created }));
 }
 export function snapshot() {
   return {
     stable: S.stable, canary: S.canary, canaryShare: S.canaryShare, canaryMs: S.canaryMs, canaryStart: S.canaryStart,
     goals: S.goals, schedule: S.schedule, budget: S.budget, budgets: Object.fromEntries(Object.entries(BUDGETS).map(([k, b]) => [k, b.label])), scheduleText: describeSchedule(), lookWanted: !!S.lookWanted && !S.busy,
-    versions: Object.values(S.versions).sort((a, b) => a.created - b.created),
+    versions: Object.values(S.versions).sort((a, b) => a.created - b.created).map(v => ({ ...v, shares: tele(v.id).shares, plays: tele(v.id).sessions })),
     manifest: S.manifest, manifests: S.manifests, skills: S.skills,
     inbox: S.inbox.slice(-30).reverse(), failures: S.failures.slice(-10), busy: S.busy,
     hunters: Object.entries(S.hunters).sort((a, b) => b[1] - a[1]).slice(0, 10),
     usage, log: S.log.slice(-80)
   };
+}
+
+// ---------- NEW GAME FROM RSI ----------
+// Generates a brand-new game twice in parallel: once WITH everything learned
+// (confirmed skills, best/most-shared version, shipped feedback, goals) and once
+// WITHOUT it. Both are playtested on the same held-out bot seeds. The with-skills
+// game ships only if it is playable; the comparison is recorded either way.
+const CONTRACT = `Write ONE file defining a global "var GAME = (function(){ ... return { CONFIG: CONFIG, create: create, step: step, render: render }; })();" and ending with "if (typeof module !== 'undefined') module.exports = GAME;".
+Rules: ES5 JavaScript, no DOM, no window/document/fetch/require, only Math. Deterministic: use a seeded RNG stored in state (st.rand), never Math.random.
+CONFIG must include W: 360, H: 560, playerHp, and rooms: an array of at least 3 rooms like { name, enemies: <count>, spikes: <bool optional>, boss: <bool optional> }, the last room with boss: true. At least 8 enemies in total.
+create(seed) returns state with: frame, room, score, coins, over, won, events: [], player: { x, y, r, hp, hurt }, enemies: [{ x, y, r, hp, kind }], bullets: [] (enemy projectiles {x,y,vx,vy}), shots: [] (player projectiles), pickups: [{ x, y, kind }], spikes: null or { y, h, gapX, gapW }.
+step(st, input) advances one frame; input is { dx, dy } in -1..1. The player auto-fires at the nearest enemy. Push events { t: 'room', room }, { t: 'death', room, x, y }, { t: 'win' }. When all enemies of a room are dead and the player touches the door at the top centre (y < 24 and |x - W/2| < 40), go to the next room and reset the player to the bottom centre. Beating the boss sets won and over. Losing all hp sets over.
+render(ctx, st, T) draws on a 2D canvas with theme T using these keys: floor, wall, wallWidth, doorOpen, doorClosed, spikes, coin, potion, enemy, boss, shot, bullet, player, text, font. You may add shapes, faces, particles or a pseudo-3D look, but gameplay stays top-down.
+Scripted test bots play it: they kite the nearest enemy, collect pickups, head for the door when the room is clear, and aim for spikes.gapX when crossing spikes. Make it fun, fair and beatable.`;
+
+function extractCode(txt) {
+  const m = String(txt).match(/```(?:js|javascript)?\s*([\s\S]*?)```/);
+  return (m ? m[1] : String(txt)).trim();
+}
+function gameTitle(code, fallback) { const m = code.match(/^\s*\/\/\s*Title:\s*(.+)$/m); return (m ? m[1] : fallback).trim().slice(0, 60); }
+
+function bestVersion() {
+  const vs = Object.values(S.versions).filter(v => !['rejected', 'rolled back', 'baseline'].includes(v.status));
+  vs.sort((a, b) => (tele(b.id).shares - tele(a.id).shares) || ((b.status === 'stable') - (a.status === 'stable')) || (b.created - a.created));
+  return vs[0] || S.versions[S.stable];
+}
+
+export async function suggestGame() {
+  const best = bestVersion();
+  return chat(MODELS.fast, [{ role: 'user', content: `We run a self-improving game studio. Suggest ONE new small top-down action game for phones that players are likely to share. Learn from the previous game: its best version was "${best.summary}" (${tele(best.id).shares} shares, ${tele(best.id).sessions} plays). Player feedback that shipped: ${S.inbox.filter(i => i.status === 'shipped').map(i => '"' + i.text + '"').slice(0, 8).join(', ') || 'none yet'}. Creator goals: ${S.goals.map(g => g.text).join('; ')}. Reply JSON {"title": "...", "pitch": "two sentences"}` }], { temperature: 0.8, timeoutMs: 45000 });
+}
+
+export async function newGame(brief) {
+  if (S.busy) return { skipped: S.busy };
+  S.busy = 'generating a new game';
+  try {
+    if (!brief) {
+      emit('newgame', 'NEW GAME FROM RSI: asking Muse Spark to suggest a game players will share...');
+      const s = await suggestGame(); brief = `${s.title}: ${s.pitch}`;
+    }
+    const best = bestVersion(), man = curManifest();
+    const lessons = {
+      skills: rulesOf(man),
+      bestVersion: { id: best.id, summary: best.summary, shares: tele(best.id).shares, plays: tele(best.id).sessions },
+      shippedFeedback: S.inbox.filter(i => i.status === 'shipped').map(i => i.text).slice(0, 10),
+      rejectedIdeas: S.failures.slice(-5).map(f => `${f.summary} -> ${f.reason}`),
+      goals: S.goals.map(g => g.text)
+    };
+    emit('newgame', `NEW GAME FROM RSI: "${brief}". Generating two candidates in parallel: one WITH the learned skills and best-version context (${best.id}, skill manifest v${man.v}), one WITHOUT.`);
+    const sys = 'You are a game programmer. Output only one ```js code block. First line of the file: // Title: <game title>';
+    const B = BUDGETS.deep;
+    const withCtx = `Make a NEW game: ${brief}\n\nThis is a new game, but base it on what our studio learned from the previous game: the skills, the goals, and what made its best version work.\nCONFIRMED SKILLS:\n${lessons.skills.map((r, i) => `${i + 1}. ${r}`).join('\n')}\nLEARNINGS: ${JSON.stringify(lessons, null, 1)}\nThe previous game's best version (reference for structure and fixes; do not copy its theme or rooms):\n\`\`\`js\n${src(best.id)}\n\`\`\`\n\nCONTRACT:\n${CONTRACT}`;
+    const noCtx = `Make a NEW game: ${brief}\n\nCONTRACT:\n${CONTRACT}`;
+    const gen = content => chat(MODELS.coder, [{ role: 'system', content: sys }, { role: 'user', content }], { json: false, temperature: 0.7, maxTokens: B.maxTokens, timeoutMs: 180000 }).catch(e => 'ERROR ' + e.message);
+    const [a, b] = await Promise.all([gen(withCtx), gen(noCtx)]);
+    const evalCode = code => {
+      if (/^ERROR/.test(code)) return { loadError: code.slice(6, 200), crashRate: 1, rooms: 0 };
+      const body = code.replace(/if \(typeof module !== 'undefined'\) module\.exports = GAME;/, '');
+      if (BANNED.test(body)) return { loadError: 'uses a banned API', crashRate: 1, rooms: 0 };
+      return playtest(code, HELDOUT_SEEDS);
+    };
+    const ca = extractCode(a), cb = extractCode(b);
+    const ma = evalCode(ca), mb = evalCode(cb);
+    const sa = goalScore(ma, S.goals), sb = goalScore(mb, S.goals);
+    const fmt = m => m.loadError ? `failed: ${m.loadError}` : `crash ${pct(m.crashRate)}, boss ${pct(m.reachBoss)}, win ${pct(m.winRate)}, avg run ${m.avgSeconds.toFixed(0)}s`;
+    emit('test', `New-game A/B on ${HELDOUT_SEEDS.length} held-out bot runs. WITH skills: ${fmt(ma)} (score ${sa.toFixed(2)}). WITHOUT: ${fmt(mb)} (score ${sb.toFixed(2)}).`);
+    const theme = themeOf(S.stable);
+    const ab = { brief, withSkills: { score: sa, metrics: strip(ma) }, withoutSkills: { score: sb, metrics: strip(mb) }, skillManifest: man.v, basedOn: best.id };
+    const baseId = mb.loadError ? null : saveVersion(cb, theme, { kind: 'newgame', game: gameTitle(cb, 'Baseline game'), parent: null, summary: `Baseline: same brief, no learned skills (${fmt(mb)})`, status: 'baseline', goals: S.goals.map(g => g.text), context: { brief, model: MODELS.coder, skills: 'none' }, ab });
+    if (ma.loadError || ma.crashRate > 0 || ma.rooms < 3) {
+      S.failures.push({ source: 'live', at: Date.now(), summary: 'New game generated with skills: ' + brief, reason: ma.loadError || `crash ${pct(ma.crashRate)}, rooms ${ma.rooms}` });
+      emit('rollback', `New game with skills was not shipped (${fmt(ma)}). ${S.stable} stays live.${baseId ? ` The baseline is playable as ${baseId} for comparison.` : ''}`);
+      return { shipped: false, ab };
+    }
+    const title = gameTitle(ca, 'New RSI game');
+    const id = saveVersion(ca, theme, { kind: 'newgame', game: title, parent: null, basedOn: best.id, summary: `NEW GAME "${title}" from RSI: ${brief.slice(0, 120)}`, diagnosis: `Built with skill manifest v${man.v} and lessons from ${best.id}. Held-out bots: ${fmt(ma)}. Baseline without skills: ${fmt(mb)}.`, goals: S.goals.map(g => g.text), skillManifest: man.v, before: sb, after: sa, heldout: strip(ma), baseHeldout: strip(mb), status: 'testing', context: { brief, lessons, model: MODELS.coder, baselineVersion: baseId }, ab });
+    emit('newgame', `${id} "${title}" built WITH skills scored ${sa.toFixed(2)} vs ${sb.toFixed(2)} WITHOUT${baseId ? ` (${baseId})` : ''}. ${sa > sb ? 'The learnings helped on this run.' : sa === sb ? 'No difference on this run.' : 'The baseline did better on this run.'}`, { id });
+    promote(id, `new game, held-out bots ${fmt(ma)}`);
+    return { shipped: true, id, ab };
+  } catch (e) { emit('error', 'New game failed: ' + e.message); return { error: e.message }; }
+  finally { S.busy = null; }
 }

@@ -1,11 +1,19 @@
-# Patchwork: the game that fixes itself
+# Patchwork: the game that improves itself
 
-A playable dungeon game that ships with bugs, and a coding agent built on the Meta Model API that keeps making it better while people play. Every change has to prove itself on held-out work before it ships, and the agent keeps track of its own failures.
+A playable dungeon game that ships with bugs, and a coding agent built on the Meta Model API that keeps making it better while people play. Players' crashes and feedback, plus goals the creator types in plain words, go into one inbox. The agent releases new versions you can pick and compare. Every change has to prove itself on held-out work before it ships. The agent also writes its own skills from its failures, and keeps a skill only if held-out bugs confirm it.
 
 Built for the AIE Code Summit hackathon, Nov 7, 2026. Problem statement: **The System That Gets Better.**
 
 - Play: `/` (scan the QR, drag to move, you shoot automatically)
 - Control room: `/control`
+
+## What you can do
+
+- **Play any version.** Each version is a self-contained folder (`versions/vN/game.js`, `theme.json`, `meta.json`). The player page has a version picker and a "what changed" panel listing the fixed reports and the goals it optimized for.
+- **Report and suggest.** Crashes are caught automatically. Thumbs up or down and written feedback go into a persistent inbox. Each item is routed by Muse Spark to the code Fixer (gameplay, bugs, difficulty) or the vision loop ("not cute enough"), and tracked from open to in test to shipped.
+- **Set goals in plain words.** "Players should play longer" is mapped by Muse Spark to measurable signals (session time, reaching the boss, wins, coins, no crashes). Goals stack, and each version records what it optimized for.
+- **Choose the update schedule:** manually, after every N play sessions, after every N feedback items, every N minutes, or continuously.
+- **Choose the Fixer budget:** Fast (about 10 s per rewrite, the default), Normal or Deep.
 
 ## How it works
 
@@ -14,14 +22,14 @@ There are three loops, and each one adopts a change only when an independent che
 **1. The game gets better.** Players' crashes, deaths, quit points and written feedback stream to the server. Scripted bot players also playtest every version in a sandbox. The Fixer (`muse-wonder-1.0`) reads those signals and writes a small patch toward the chosen goal: fewer crashes, more players reaching the boss, beating the boss, or longer sessions. Each patch then goes through these steps:
 
 1. It must apply cleanly and use no banned APIs.
-2. It must raise the goal score on **held-out bot seeds** it never saw.
+2. On **held-out bot seeds** it never saw, it must raise the goal score, or address player requests without lowering it.
 3. It must pass **guardrails** against cheating the goal. Deleting a room to "improve progress" fails because content was removed and the boss was reached too fast.
 4. It ships as a **canary** to a share of real players, and is rolled back if real players crash more.
 5. Only then is it promoted to everyone. Every version is kept with its parent, diff, reason and evidence.
 
-**2. The agent gets better.** Every rejected or rolled-back patch is logged as a failure. The Reflector reads the failures and proposes one new general rule for the Fixer's **skillbook**, which becomes a new skillbook version. The new version is scored against the current one on a **held-out bug bench**: seeded bugs the Reflector never sees, checked by hidden tests that also catch workarounds. One example is raising a tuning value to hide a code bug. A skillbook version is adopted only if it solves more held-out bugs. Otherwise it is discarded.
+**2. The agent gets better.** Every rejected or rolled-back patch is logged as a failure. The Reflector reads the failures and writes one new general skill, saved as `skills/skill_NNN.md` with its date, project and context. That skill plus the confirmed ones form a candidate `skills/skill_manifest_vN.md`. The new version is scored against the current one on a **held-out bug bench**: seeded bugs the Reflector never sees, checked by hidden tests that also catch workarounds. One example is raising a tuning value to hide a code bug. A manifest is adopted only if it solves more held-out bugs. Otherwise the skill is marked discarded. Nothing is deleted, so the folder shows what the agent tried and what was confirmed. See [skills/README.md](skills/README.md).
 
-**3. It looks better (Meta vision).** `muse-image-1.0` generated the target art. Each look step, `muse-spark-1.3-contributor` compares a screenshot of the game with the target and proposes a new theme. A vision judge then compares the old and new screenshots **twice, with the order swapped**. The new look is adopted only if it wins both times, so a position bias can't win it.
+**3. It looks better (Meta vision).** `muse-image-1.0` generated the target art. Each look step, `muse-spark-1.3-contributor` compares two frames of the game with the target, plus any look requests from players, and proposes a new theme. A vision judge then compares the old and new screenshots **twice, with the order swapped**. The new look is adopted only if it wins both times, so a position bias can't win it.
 
 Bug hunters earn points when their crash reports and feedback reach the agent, and more when a fix ships.
 
@@ -30,7 +38,7 @@ Bug hunters earn points when their crash reports and feedback reach the agent, a
 | Model | Job |
 |---|---|
 | `muse-wonder-1.0` | Fixer and Reflector: writes patches and skillbook rules |
-| `muse-spark-1.3-contributor` | Vision: proposes themes and judges which screenshot is closer to the target |
+| `muse-spark-1.3-contributor` | Vision (proposes themes, judges screenshots), feedback routing, goal mapping |
 | `muse-image-1.0` | Generated the target art |
 
 ## Run it
@@ -50,7 +58,8 @@ Node 20 or newer. No dependencies. Set `ADMIN_TOKEN` to protect the control acti
 | `versions/v1/game.js` | The original game with its bugs. Pure logic (`create`, `step`) is separate from drawing, so the same file runs in browsers and in the sandbox |
 | `agent/playtest.mjs` | Sandboxed bot playtests (Node `vm`, no API key, time limit). The agent can't edit it |
 | `agent/bench.mjs` | The bug bench: 4 training bugs and 6 held-out bugs with hidden checks |
-| `agent/evolve.mjs` | The loops: Fixer, gates, canary, rollback, Reflector, skillbook versions, vision look loop |
+| `agent/evolve.mjs` | The loops: inbox and routing, goals, schedule, Fixer, gates, canary, rollback, Reflector, skill manifests, vision look loop |
+| `skills/` | The agent's versioned skills and manifests, written by the agent |
 | `server.mjs` | Serves the game, routes players to stable or canary, collects telemetry, runs playbooks |
 | `public/` | Player page, control room, target art |
 

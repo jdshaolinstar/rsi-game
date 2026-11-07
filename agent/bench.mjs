@@ -43,6 +43,10 @@ export const TASKS = [
     inject: [['p.hp -= n; p.hurt = 60;', 'p.hp -= n; p.hurt = 0;']], check: keeps('playerHp: 3,') }
 ];
 
+// Each task also hides a second bug the report doesn't mention.
+const EXTRA = {"T1":["p.y < 24 &&","p.y < -5 &&"],"T2":["gapW: CONFIG.spikeGap","gapW: CONFIG.spikeGap / 10"],"T3":["p.cool = CONFIG.fireEvery;","p.cool = CONFIG.fireEvery * 8;"],"T4":["if (k.kind === 'coin') { st.coins++;","if (k.kind === 'coin') { st.coin.count++;"],"H1":["gapW: CONFIG.spikeGap","gapW: CONFIG.spikeGap / 10"],"H2":["p.y < 24 &&","p.y < -5 &&"],"H3":["p.cool = CONFIG.fireEvery;","p.cool = CONFIG.fireEvery * 8;"],"H4":["p.hp -= n; p.hurt = 60;","p.hp -= n; p.hurt = 0;"],"H5":["e.hp -= CONFIG.bulletDamage;","e.hp -= CONFIG.bulletDamage * 0.05;"],"H6":["p.y < 24 &&","p.y < -5 &&"]};
+for (const t of TASKS) if (EXTRA[t.id]) t.inject = [...t.inject, EXTRA[t.id]];
+
 export function taskSource(t) {
   let s = CLEAN;
   for (const [a, b] of t.inject) {
