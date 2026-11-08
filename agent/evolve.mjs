@@ -538,3 +538,59 @@ export async function newGame(brief) {
   } catch (e) { emit('error', 'New game failed: ' + e.message); return { error: e.message }; }
   finally { S.busy = null; }
 }
+
+// ---------- system states (checkpoints) ----------
+// A state is one JSON file in snapshots/: every version's code and theme plus
+// the agent's whole memory (inbox, goals, skills, manifests, failures, log,
+// player stats). Files in the repo survive redeploys.
+const SNAP = new URL('snapshots/', ROOT);
+mkdirSync(SNAP, { recursive: true });
+const safeName = n => String(n || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+
+export function listStates() {
+  return readdirSync(SNAP).filter(f => f.endsWith('.json')).map(f => {
+    try { const j = JSON.parse(readFileSync(new URL(f, SNAP), 'utf8')); return { name: j.name, savedAt: j.savedAt, stable: j.state.stable, versions: Object.keys(j.files).length, note: j.note || '' }; }
+    catch { return null; }
+  }).filter(Boolean).sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
+}
+
+export function saveState(name, note = '') {
+  name = safeName(name) || 'state-' + Date.now();
+  const files = {};
+  for (const id of Object.keys(S.versions)) {
+    try { files[id] = { game: src(id), theme: themeOf(id) }; } catch {}
+  }
+  const tel = {};
+  for (const [v, t] of Object.entries(S.tele)) tel[v] = { ...t, players: [...t.players] };
+  const state = {
+    versions: S.versions, stable: S.stable, goals: S.goals, inbox: S.inbox, skills: S.skills, manifests: S.manifests, manifest: S.manifest,
+    schedule: S.schedule, budget: S.budget, failures: S.failures, log: S.log, hunters: S.hunters, tele: tel, seq
+  };
+  const bundle = { name, note, savedAt: new Date().toISOString(), state, files };
+  writeFileSync(new URL(`${name}.json`, SNAP), JSON.stringify(bundle));
+  emit('state', `System state "${name}" saved: ${Object.keys(files).length} versions, live ${S.stable}, skill manifest v${S.manifest}, ${S.inbox.length} inbox items.`);
+  return { name, versions: Object.keys(files).length };
+}
+
+export function loadState(name) {
+  if (S.busy) return { error: 'agent is busy: ' + S.busy };
+  const f = new URL(`${safeName(name)}.json`, SNAP);
+  if (!existsSync(f)) return { error: 'no such state' };
+  const b = JSON.parse(readFileSync(f, 'utf8')), st = b.state;
+  for (const [id, x] of Object.entries(b.files)) {
+    mkdirSync(new URL(`${id}/`, VDIR), { recursive: true });
+    writeFileSync(new URL(`${id}/game.js`, VDIR), x.game);
+    writeFileSync(new URL(`${id}/theme.json`, VDIR), JSON.stringify(x.theme, null, 2));
+  }
+  S.versions = st.versions; S.stable = st.stable; S.canary = null;
+  S.goals = st.goals || S.goals; S.inbox = st.inbox || []; S.failures = st.failures || []; S.hunters = st.hunters || {};
+  if (st.skills && st.manifests) { S.skills = st.skills; S.manifests = st.manifests; S.manifest = st.manifest; }
+  if (st.schedule) S.schedule = st.schedule; if (st.budget) S.budget = st.budget;
+  S.tele = {};
+  for (const [v, t] of Object.entries(st.tele || {})) S.tele[v] = { ...t, players: new Set(t.players || []) };
+  if (st.seq) seq = Math.max(seq, st.seq);
+  S.log = (st.log || []).slice(-300);
+  for (const id of Object.keys(S.versions)) persistMeta(id);
+  emit('state', `System state "${b.name}" loaded (saved ${b.savedAt}): ${Object.keys(b.files).length} versions, live ${S.stable}, skill manifest v${S.manifest}.`);
+  return { name: b.name, stable: S.stable, versions: Object.keys(b.files).length };
+}

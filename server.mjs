@@ -67,6 +67,7 @@ const server = http.createServer(async (req, res) => {
       m = p.match(/^\/skills\/([\w.-]+\.(md|json))$/);
       if (m) return file(res, new URL(`skills/${m[1]}`, root));
       if (p === '/api/state') return send(res, 200, A.snapshot());
+      if (p === '/api/states') return send(res, 200, A.listStates());
       if (p === '/api/events') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
         res.write('retry: 2000\n\n');
@@ -93,6 +94,8 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, A.S.schedule);
       }
       if (p === '/api/budget') { if (A.BUDGETS[b.budget]) { A.S.budget = b.budget; A.emit('schedule', `Fixer budget: ${A.BUDGETS[b.budget].label}`); } return send(res, 200, { budget: A.S.budget }); }
+      if (p === '/api/states/save') return send(res, 200, A.saveState(b.name, b.note));
+      if (p === '/api/states/load') return send(res, 200, A.loadState(b.name));
       if (p === '/api/newgame') { A.newGame(String(b.brief || '').slice(0, 400)); return send(res, 200, { started: true }); }
       if (p === '/api/gen') { A.runGeneration(); return send(res, 200, { started: true }); }
       if (p === '/api/learn') { A.learn(); return send(res, 200, { started: true }); }

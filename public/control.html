@@ -84,6 +84,12 @@
       <div class="muted" style="font-size:11px">Builds a new game twice: WITH the learned skills, best and most-shared version and shipped feedback, and WITHOUT them. Both run the same held-out bot playtests. The without-skills game stays playable for comparison.</div>
     </section>
     <section><h2>Inbox: crashes and feedback</h2><table id="inbox"></table></section>
+    <section>
+      <h2>System states (checkpoints)</h2>
+      <div class="row"><select id="stateList" style="flex:1"></select><button class="primary" id="loadState">📂 Load</button></div>
+      <div class="row"><input type="text" id="stateName" placeholder="name, e.g. judges-v5" style="flex:1;width:auto"><button id="saveState">💾 Save</button></div>
+      <div class="muted" style="font-size:11px">Saves every version's code and look, plus the inbox, goals, skills, log and stats. Saved states in the repo survive redeploys.</div>
+    </section>
     <section><h2>Playbooks</h2>
       <button data-pb="crash">💥 Bad deploy: crash</button><button data-pb="annoy">😤 Fast slimes</button><button data-pb="sabotage">🕳 Cheating patch</button><button data-pb="reset">↺ Reset to v1</button>
     </section>
@@ -199,6 +205,10 @@ $('newgame').onclick = function () { post('/api/newgame', { brief: $('brief').va
 $('sched').onchange = $('schedN').onchange = function () { post('/api/schedule', { mode: $('sched').value, n: +$('schedN').value }).then(refresh); };
 $('budget').onchange = function () { post('/api/budget', { budget: this.value }).then(refresh); };
 document.querySelectorAll('[data-pb]').forEach(function (b) { b.onclick = function () { post('/api/playbook/' + b.dataset.pb).then(refresh); }; });
+function loadStates() { fetch('/api/states').then(function (r) { return r.json(); }).then(function (l) { $('stateList').innerHTML = l.map(function (s) { return '<option value="' + esc(s.name) + '">' + esc(s.name) + ' · live ' + s.stable + ' · ' + s.versions + ' versions</option>'; }).join('') || '<option value="">no saved states</option>'; }); }
+$('saveState').onclick = function () { var n = $('stateName').value.trim(); if (!n) { $('stateName').focus(); return; } post('/api/states/save', { name: n }).then(function () { $('stateName').value = ''; loadStates(); }); };
+$('loadState').onclick = function () { var n = $('stateList').value; if (!n) return; post('/api/states/load', { name: n }).then(function (r) { if (r.error) addEv({ at: Date.now(), kind: 'error', msg: r.error }); curStable = null; refresh(); var g = $('game'); g.src = g.src; }); };
+loadStates();
 refresh(); setInterval(refresh, 3000);
 </script>
 </body>
