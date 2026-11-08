@@ -9,6 +9,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync, appendFileSync, rea
 import { chat, vision, MODELS, usage } from './meta.mjs';
 import { playtest, TRAIN_SEEDS, HELDOUT_SEEDS } from './playtest.mjs';
 import { TASKS, taskSource, checkTask } from './bench.mjs';
+import * as store from './store.mjs';
 
 const ROOT = new URL('../', import.meta.url);
 const VDIR = new URL('versions/', ROOT);
@@ -567,7 +568,9 @@ export function saveState(name, note = '') {
     schedule: S.schedule, budget: S.budget, failures: S.failures, log: S.log, hunters: S.hunters, tele: tel, seq
   };
   const bundle = { name, note, savedAt: new Date().toISOString(), state, files };
-  writeFileSync(new URL(`${name}.json`, SNAP), JSON.stringify(bundle));
+  const json = JSON.stringify(bundle);
+  writeFileSync(new URL(`${name}.json`, SNAP), json);
+  store.putState(name, json).then(ok => { if (ok) emit('state', `State "${name}" stored durably at ${store.where()}.`); }).catch(err => emit('error', `State "${name}" saved locally but the S3 upload failed: ${err.message}`));
   emit('state', `System state "${name}" saved: ${Object.keys(files).length} versions, live ${S.stable}, skill manifest v${S.manifest}, ${S.inbox.length} inbox items.`);
   return { name, versions: Object.keys(files).length };
 }
@@ -594,3 +597,6 @@ export function loadState(name) {
   emit('state', `System state "${b.name}" loaded (saved ${b.savedAt}): ${Object.keys(b.files).length} versions, live ${S.stable}, skill manifest v${S.manifest}.`);
   return { name: b.name, stable: S.stable, versions: Object.keys(b.files).length };
 }
+
+// pull durable states down at boot
+store.pullAll(SNAP).then(got => { if (store.durable()) emit('state', `Durable state store: ${store.where()}${got.length ? ' (restored ' + got.join(', ') + ')' : ''}.`); }).catch(err => emit('error', 'Could not pull states from S3: ' + err.message));

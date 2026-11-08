@@ -4,6 +4,14 @@
   "private": true,
   "type": "module",
   "description": "A game that fixes itself: a self-improving coding agent with held-out gates, canaries and rollback. Built at the AIE Code Summit hackathon.",
-  "scripts": { "start": "node server.mjs", "bench": "node scripts/benchcheck.mjs" },
-  "engines": { "node": ">=20" }
+  "scripts": {
+    "start": "node server.mjs",
+    "bench": "node scripts/benchcheck.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1164.0"
+  }
 }
