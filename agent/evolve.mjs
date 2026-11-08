@@ -123,7 +123,7 @@ const rulesOf = m => m.skills.map(id => S.skills[id].text);
 export function tele(v) {
   return S.tele[v] ||= { players: new Set(), sessions: 0, errors: {}, deaths: [], rooms: {}, wins: 0, shares: 0 };
 }
-const LOOK_WORDS = /\b(cute|ugly|pretty|color|colour|colors|look|looks|art|visual|style|bright|dark|beautiful|graphics|sprite|theme|vibe|aesthetic)\b/i;
+const LOOK_WORDS = /\b(cute|ugly|pretty|colou?rs?|colou?rful|look|looks|art|visual|visuals|style|bright|dark|dull|drab|beautiful|graphics|sprites?|theme|vibe|aesthetic|gr[ae]y|contrast|blend|blends|see|visible|visibility|faded|washed|overlay|screen|display)\b/i;
 export function ingest(ev) {
   const v = S.versions[ev.v] ? ev.v : S.stable, t = tele(v);
   if (ev.pid) t.players.add(ev.pid);
@@ -150,8 +150,9 @@ export function ingest(ev) {
 }
 async function routeItem(item) {
   try {
-    const r = await chat(MODELS.fast, [{ role: 'user', content: `Route this player feedback about a small browser dungeon game. "code" = gameplay, difficulty, controls, bugs, features, content. "look" = visual style, colors, cuteness, art. Feedback: "${item.text}". Reply JSON {"route":"code"|"look","why":"short"}` }], { temperature: 0, timeoutMs: 20000 });
+    const r = await chat(MODELS.fast, [{ role: 'user', content: `Route this player feedback about a small browser dungeon game. "code" = gameplay, difficulty, controls, crashes, features, content. "look" = anything about how it looks: colors, cuteness, art, contrast, things being grey or hard to see, a dull or washed-out screen. A complaint about the screen looking grey or covered is "look" unless it mentions a crash or error. Feedback: "${item.text}". Reply JSON {"route":"code"|"look","why":"short"}` }], { temperature: 0, timeoutMs: 20000 });
     if (r.route === 'look' || r.route === 'code') item.route = r.route;
+    if (item.route === 'code' && LOOK_WORDS.test(item.text) && !/crash|error|freez|stuck|bug|broke/i.test(item.text)) { item.route = 'look'; r.why = (r.why || '') + ' (visual words, no crash mentioned: sent to vision)'; }
     emit('route', `${item.id} routed to ${item.route === 'look' ? 'the vision look loop' : 'the code Fixer'}: ${r.why || ''}`, { item: item.id });
   } catch { emit('route', `${item.id} routed to ${item.route} (keyword fallback)`); }
 }
