@@ -4,8 +4,16 @@ A playable dungeon game that ships with bugs, and a coding agent built on the Me
 
 Built for the AIE Code Summit hackathon, Nov 7, 2026. Problem statement: **The System That Gets Better.**
 
-- Play: `/` (scan the QR, drag to move, you shoot automatically)
-- Control room: `/control`
+## Live demo
+
+| | URL | Who it's for |
+|---|---|---|
+| **Play the game** | http://patchwork-demo.us-east-1.elasticbeanstalk.com | Anyone. Drag to move, you shoot automatically. Crashes and feedback go straight to the agent. Pick any version from the dropdown, or share one with `/?v=vN` |
+| **Control room** | http://patchwork-demo.us-east-1.elasticbeanstalk.com/control | Anyone can **watch**: the live agent feed, the inbox, every version with its diff and the context the agent saw, the skill manifests, the vision target, saved states and the bug-hunter board |
+
+The agent controls in the control room (Improve now, Teach itself, Look step, New game, goals, schedule, playbooks, save and load) are **locked to an admin token**, because every action spends Meta API credits. Judges can ask the team for the token. Without it, those buttons are refused by the server. The server also stops after a fixed number of model calls (`CALL_CAP`).
+
+The live server starts from a saved system state. To see the whole history, open the game's version dropdown: v1 is the buggy first draft, v2 is the agent's crash fix, v3 is the new look from "too grey" feedback, v4 is a new game built without learned skills (the baseline), and v5 is the same brief built with them.
 
 ## What you can do
 
@@ -15,6 +23,7 @@ Built for the AIE Code Summit hackathon, Nov 7, 2026. Problem statement: **The S
 - **Choose the update schedule:** manually, after every N play sessions, after every N feedback items, every N minutes, or continuously.
 - **Share a version.** The share button links to `/?v=vN`. Shares are counted per version as a real-player signal; bots can't share, so shares never gate a code change.
 - **NEW GAME FROM RSI.** Describe a game, or let Muse Spark suggest one players will share. The agent builds it twice in parallel: WITH the confirmed skills, the best and most-shared version, shipped feedback and goals, and WITHOUT any of that. Both run the same held-out bot playtests. The with-skills game ships if it's playable, the baseline stays playable for comparison, and the A/B is recorded on the version.
+- **Save and load system states.** A state is a checkpoint of the whole system: every version's code and look, plus the inbox, goals, skill manifests, failures, log and player stats. States are stored in S3 and pulled back at boot, so they survive redeploys. `snapshots/demo-v5.json` is the live run from the event.
 - **Choose the Fixer budget:** Fast (about 10 s per rewrite, the default), Normal or Deep.
 
 ## How it works
@@ -64,6 +73,8 @@ Node 20 or newer. No dependencies. Set `ADMIN_TOKEN` to protect the control acti
 | `skills/` | The agent's versioned skills and manifests, written by the agent |
 | `server.mjs` | Serves the game, routes players to stable or canary, collects telemetry, runs playbooks |
 | `public/` | Player page, control room, target art |
+| `agent/store.mjs` | Durable state storage in S3 (upload on save, pull at boot) |
+| `snapshots/` | Saved system states committed to the repo |
 
 ## Built during the hackathon
 
